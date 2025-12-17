@@ -1,4 +1,4 @@
-
+# Convert grc to yaml and vice versa
 import yaml
 from xml.etree.ElementTree import Element, SubElement, tostring, parse
 from xml.dom import minidom
