@@ -33,8 +33,8 @@ options:
     state: enabled
 
 blocks:
-- name: freq
-  id: variable_qtgui_range
+- id: freq
+  key: variable_qtgui_range
   parameters:
     comment: ''
     gui_hint: ''
@@ -55,8 +55,8 @@ blocks:
     rotation: 0
     state: true
 
-- name: gain
-  id: variable_qtgui_range
+- id: gain
+  key: variable_qtgui_range
   parameters:
     comment: ''
     gui_hint: ''
@@ -77,8 +77,8 @@ blocks:
     rotation: 0
     state: true
 
-- name: samp_rate
-  id: variable
+- id: samp_rate
+  key: variable
   parameters:
     comment: ''
     value: '2000000'
@@ -90,8 +90,8 @@ blocks:
     rotation: 0
     state: enabled
 
-- name: analog_wfm_rcv_0
-  id: analog_wfm_rcv
+- id: analog_wfm_rcv_0
+  key: analog_wfm_rcv
   parameters:
     affinity: ''
     alias: ''
@@ -108,8 +108,8 @@ blocks:
     rotation: 0
     state: true
 
-- name: audio_sink_0
-  id: audio_sink
+- id: audio_sink_0
+  key: audio_sink
   parameters:
     affinity: ''
     alias: ''
@@ -126,8 +126,8 @@ blocks:
     rotation: 0
     state: true
 
-- name: blocks_null_sink_0
-  id: blocks_null_sink
+- id: blocks_null_sink_0
+  key: blocks_null_sink
   parameters:
     affinity: ''
     alias: ''
@@ -144,8 +144,8 @@ blocks:
     rotation: 0
     state: true
 
-- name: blocks_wavfile_source_0
-  id: blocks_wavfile_source
+- id: blocks_wavfile_source_0
+  key: blocks_wavfile_source
   parameters:
     affinity: ''
     alias: ''
@@ -163,8 +163,8 @@ blocks:
     rotation: 0
     state: disabled
 
-- name: low_pass_filter_0
-  id: low_pass_filter
+- id: low_pass_filter_0
+  key: low_pass_filter
   parameters:
     affinity: ''
     alias: ''
@@ -188,8 +188,8 @@ blocks:
     rotation: 0
     state: true
 
-- name: qtgui_freq_sink_x_0
-  id: qtgui_freq_sink_x
+- id: qtgui_freq_sink_x_0
+  key: qtgui_freq_sink_x
   parameters:
     affinity: ''
     alias: ''
@@ -270,8 +270,8 @@ blocks:
     rotation: 0
     state: true
 
-- name: rds_decoder_0
-  id: rds_decoder
+- id: rds_decoder_0
+  key: rds_decoder
   parameters:
     affinity: ''
     alias: ''
@@ -288,8 +288,8 @@ blocks:
     rotation: 0
     state: true
 
-- name: rds_panel_0
-  id: rds_panel
+- id: rds_panel_0
+  key: rds_panel
   parameters:
     affinity: ''
     alias: ''
@@ -304,8 +304,8 @@ blocks:
     rotation: 0
     state: true
 
-- name: rds_parser_0
-  id: rds_parser
+- id: rds_parser_0
+  key: rds_parser
   parameters:
     affinity: ''
     alias: ''
@@ -324,8 +324,8 @@ blocks:
     rotation: 0
     state: true
 
-- name: uhd_usrp_source_0
-  id: uhd_usrp_source
+- id: uhd_usrp_source_0
+  key: uhd_usrp_source
   parameters:
     affinity: ''
     alias: ''
@@ -653,8 +653,8 @@ blocks:
     rotation: 0
     state: true
 
-- name: rational_resampler_xxx_0
-  id: rational_resampler_xxx
+- id: rational_resampler_xxx_0
+  key: rational_resampler_xxx
   parameters:
     affinity: ''
     alias: ''
