@@ -66,7 +66,7 @@ blocks:
     comment: ''
     maxoutbuf: '0'
     minoutbuf: '0'
-    quad_rate: '75000'
+    quad_rate: samp_rate
   states:
     bus_sink: false
     bus_source: false
@@ -99,7 +99,7 @@ blocks:
     beta: '6.76'
     comment: ''
     decim: '1'
-    gain: '700'
+    gain: '1'
     high_cutoff_freq: 19.05e3
     interp: '1'
     low_cutoff_freq: 18.95e3
@@ -258,8 +258,8 @@ blocks:
     beta: '6.76'
     comment: ''
     cutoff_freq: '15000'
-    decim: '8'
-    gain: '20'
+    decim: '5'
+    gain: '1'
     interp: '1'
     maxoutbuf: '0'
     minoutbuf: '0'
@@ -282,8 +282,8 @@ blocks:
     beta: '6.76'
     comment: ''
     cutoff_freq: '15000'
-    decim: '8'
-    gain: '30'
+    decim: '5'
+    gain: '1'
     interp: '1'
     maxoutbuf: '0'
     minoutbuf: '0'
@@ -547,7 +547,7 @@ blocks:
     affinity: ''
     alias: ''
     comment: ''
-    decim: '135'
+    decim: '25'
     fbw: '0.4'
     interp: '24'
     maxoutbuf: '0'
@@ -567,7 +567,7 @@ blocks:
     affinity: ''
     alias: ''
     comment: ''
-    decim: '135'
+    decim: '25'
     fbw: '0.4'
     interp: '24'
     maxoutbuf: '0'
@@ -618,7 +618,7 @@ blocks:
     ant7: '"RX2"'
     ant8: '"RX2"'
     ant9: '"RX2"'
-    bw0: '250'
+    bw0: '250e3'
     bw1: '0'
     bw10: '0'
     bw11: '0'
