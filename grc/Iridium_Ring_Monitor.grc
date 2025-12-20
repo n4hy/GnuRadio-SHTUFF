@@ -128,7 +128,7 @@ blocks:
     legend: 'True'
     maxoutbuf: '0'
     minoutbuf: '0'
-    name: 'FFT Spectrum'
+    name: FFT Spectrum
     nconnections: '1'
     norm_window: 'False'
     showports: 'False'
@@ -207,7 +207,7 @@ blocks:
     legend: 'True'
     maxoutbuf: '0'
     minoutbuf: '0'
-    name: 'Waterfall'
+    name: Waterfall
     nconnections: '1'
     showports: 'False'
     type: complex
@@ -322,7 +322,7 @@ blocks:
     center_freq8: '0'
     center_freq9: '0'
     clock_rate: 0e0
-    clock_source0: ''
+    clock_source0: external
     clock_source1: ''
     clock_source2: ''
     clock_source3: ''
