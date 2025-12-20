@@ -33,6 +33,27 @@ options:
     state: enabled
 
 blocks:
+- name: Volume
+  id: variable_qtgui_range
+  parameters:
+    comment: ''
+    gui_hint: ''
+    label: ''
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0'
+    step: '0.01'
+    stop: '1'
+    value: '.4'
+    widget: eng_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [64, 352.0]
+    rotation: 0
+    state: enabled
 - name: audio_rate
   id: variable
   parameters:
@@ -279,13 +300,8 @@ blocks:
     beta: '6.76'
     comment: ''
     cutoff_freq: '15000'
-<<<<<<< HEAD
-    decim: '1'
-    gain: '20'
-=======
     decim: '5'
-    gain: '1'
->>>>>>> fix-usrp-underruns-12843389754415895378
+    gain: Volume
     interp: '1'
     maxoutbuf: '0'
     minoutbuf: '0'
@@ -308,13 +324,8 @@ blocks:
     beta: '6.76'
     comment: ''
     cutoff_freq: '15000'
-<<<<<<< HEAD
-    decim: '1'
-    gain: '30'
-=======
     decim: '5'
-    gain: '1'
->>>>>>> fix-usrp-underruns-12843389754415895378
+    gain: Volume
     interp: '1'
     maxoutbuf: '0'
     minoutbuf: '0'
@@ -408,6 +419,87 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [560, 24.0]
+    rotation: 0
+    state: enabled
+- name: qtgui_freq_sink_x_1_0
+  id: qtgui_freq_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    average: '1.0'
+    axislabels: 'True'
+    bw: samp_rate
+    color1: '"blue"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: ''
+    ctrlpanel: 'False'
+    fc: '0'
+    fftsize: '2048'
+    freqhalf: 'True'
+    grid: 'False'
+    gui_hint: ''
+    label: Relative Gain
+    label1: ''
+    label10: ''''''
+    label2: ''''''
+    label3: ''''''
+    label4: ''''''
+    label5: ''''''
+    label6: ''''''
+    label7: ''''''
+    label8: ''''''
+    label9: ''''''
+    legend: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: FM Stereo Channel
+    nconnections: '1'
+    norm_window: 'False'
+    showports: 'False'
+    tr_chan: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_tag: '""'
+    type: complex
+    units: dB
+    update_time: '0.10'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    wintype: window.WIN_BLACKMAN_hARRIS
+    ymax: '10'
+    ymin: '-140'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [352, 48.0]
     rotation: 0
     state: enabled
 - name: rational_resampler_xxx_0
@@ -909,6 +1001,7 @@ connections:
 - [rational_resampler_xxx_0, '0', audio_sink_0, '0']
 - [rational_resampler_xxx_0_0, '0', audio_sink_0, '1']
 - [uhd_usrp_source_1_0, '0', analog_wfm_rcv_0, '0']
+- [uhd_usrp_source_1_0, '0', qtgui_freq_sink_x_1_0, '0']
 
 metadata:
   file_format: 1
