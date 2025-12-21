@@ -1,5 +1,6 @@
 import numpy as np
 from gnuradio import gr
+import sys
 
 class rds_decoder(gr.sync_block):
     """
@@ -34,6 +35,9 @@ class rds_decoder(gr.sync_block):
         # Differential Decoding State
         self.last_bit = 0
 
+        # Debug
+        self.bit_counter = 0
+
     def syndrome(self, m):
         # Calculate syndrome for the last 26 bits
         # g(x) = x^10 + x^8 + x^7 + x^5 + x^4 + x^3 + 1
@@ -49,6 +53,12 @@ class rds_decoder(gr.sync_block):
     def work(self, input_items, output_items):
         in0 = input_items[0]
 
+        if len(in0) > 0:
+            self.bit_counter += len(in0)
+            if self.bit_counter % 5000 < len(in0): # Approx every 5k bits
+                print(f"[RDS] Status: Processed {self.bit_counter} bits. Synced: {self.synced}")
+                sys.stdout.flush()
+
         for raw_bit in in0:
             val = raw_bit & 0x01
             decoded_bit = val ^ self.last_bit
@@ -58,6 +68,10 @@ class rds_decoder(gr.sync_block):
             self.bit_buffer = ((self.bit_buffer << 1) | decoded_bit) & 0x3FFFFFF
 
             syn = self.syndrome(self.bit_buffer)
+
+            # Debug: Print syndrome occasionally if not synced
+            # if not self.synced and self.bit_counter % 1000 == 0:
+            #    print(f"[RDS Debug] Current Syndrome: {bin(syn)}")
 
             offset_found = -1
             if syn == self.OFFSET_A: offset_found = 0
@@ -70,6 +84,7 @@ class rds_decoder(gr.sync_block):
                 if not self.synced:
                     if offset_found == 0:
                         print("[RDS] SYNC ACQUIRED (Block A)")
+                        sys.stdout.flush()
                         self.synced = True
                         self.last_block_id = 0
                         self.process_block(0, self.bit_buffer >> 10)
@@ -86,6 +101,7 @@ class rds_decoder(gr.sync_block):
                     else:
                          if offset_found == 0:
                             print("[RDS] Resyncing on Block A...")
+                            sys.stdout.flush()
                             self.last_block_id = 0
                             self.process_block(0, self.bit_buffer >> 10)
 
@@ -95,6 +111,7 @@ class rds_decoder(gr.sync_block):
         if block_id == 0: # A: PI Code
             if self.pi_code != data_16:
                 print(f"[RDS] PI Code Detected: {hex(data_16)}")
+                sys.stdout.flush()
             self.pi_code = data_16
             self.group_data['PI'] = data_16
 
@@ -120,4 +137,5 @@ class rds_decoder(gr.sync_block):
 
                     ps_str = "".join(self.ps_name)
                     print(f"[RDS] Station Name: '{ps_str}'")
+                    sys.stdout.flush()
                     self.message_port_pub(gr.pmt.intern('ps_out'), gr.pmt.intern(ps_str))

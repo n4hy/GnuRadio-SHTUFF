@@ -403,52 +403,61 @@ blocks:
     state: enabled
 - id: epy_block
   name: rds_decoder_block
-  parameters: {_source_code: "import numpy as np\nfrom gnuradio import gr\n\nclass\
-      \ rds_decoder(gr.sync_block):\n    \"\"\"\n    Embedded Python Block for RDS\
-      \ Decoding.\n    Inputs:  demodulated symbols (byte/int) - 0 or 1\n    Outputs:\
-      \ message port for PS name\n    \"\"\"\n    def __init__(self):\n        gr.sync_block.__init__(\n\
-      \            self,\n            name='RDS Decoder',\n            in_sig=[np.byte],\n\
-      \            out_sig=None\n        )\n        self.message_port_register_out(gr.pmt.intern('ps_out'))\n\
-      \        \n        # RDS Constants\n        self.OFFSET_A = 0b0011111100 # A=0\n\
-      \        self.OFFSET_B = 0b0110011000 # B=1\n        self.OFFSET_C = 0b0101101000\
-      \ # C=2\n        self.OFFSET_Cp= 0b1101010000 # C'=3\n        self.OFFSET_D\
-      \ = 0b0110110100 # D=4\n        \n        # State\n        self.synced = False\n\
-      \        self.bit_buffer = 0\n        self.last_block_id = -1\n        self.group_data\
-      \ = {} \n        self.ps_name = [' ']*8\n        self.pi_code = 0\n        \n\
-      \        # Differential Decoding State\n        self.last_bit = 0\n\n    def\
-      \ syndrome(self, m):\n        # Calculate syndrome for the last 26 bits\n  \
-      \      # g(x) = x^10 + x^8 + x^7 + x^5 + x^4 + x^3 + 1\n        reg = 0\n  \
-      \      for i in range(25, -1, -1):\n            bit = (m >> i) & 0x01\n    \
-      \        reg_msb = (reg >> 9) & 0x01\n            reg = (reg << 1) & 0x3FF\n\
-      \            if bit ^ reg_msb:\n                reg = reg ^ 0x1B9\n        return\
-      \ reg\n\n    def work(self, input_items, output_items):\n        in0 = input_items[0]\n\
-      \        \n        for raw_bit in in0:\n            val = raw_bit & 0x01\n \
-      \           decoded_bit = val ^ self.last_bit\n            self.last_bit = val\n\
-      \            \n            # Now process the decoded bit\n            self.bit_buffer\
-      \ = ((self.bit_buffer << 1) | decoded_bit) & 0x3FFFFFF \n            \n    \
-      \        syn = self.syndrome(self.bit_buffer)\n            \n            offset_found\
-      \ = -1\n            if syn == self.OFFSET_A: offset_found = 0\n            elif\
-      \ syn == self.OFFSET_B: offset_found = 1\n            elif syn == self.OFFSET_C:\
-      \ offset_found = 2\n            elif syn == self.OFFSET_Cp: offset_found = 3\n\
-      \            elif syn == self.OFFSET_D: offset_found = 4\n            \n   \
-      \         if offset_found != -1:\n                if not self.synced:\n    \
-      \                if offset_found == 0:\n                        print(\"[RDS]\
-      \ SYNC ACQUIRED (Block A)\")\n                        self.synced = True\n \
-      \                       self.last_block_id = 0\n                        self.process_block(0,\
-      \ self.bit_buffer >> 10)\n                else:\n                    expected\
-      \ = (self.last_block_id + 1) % 4\n                    if expected == 2: # C\
-      \ or C'\n                        valid = (offset_found == 2 or offset_found\
-      \ == 3)\n                    else:\n                        valid = (offset_found\
-      \ == expected)\n                    \n                    if valid:\n      \
-      \                  self.last_block_id = offset_found if offset_found != 3 else\
-      \ 2\n                        self.process_block(offset_found, self.bit_buffer\
-      \ >> 10)\n                    else:\n                         if offset_found\
-      \ == 0: \n                            print(\"[RDS] Resyncing on Block A...\"\
-      )\n                            self.last_block_id = 0\n                    \
-      \        self.process_block(0, self.bit_buffer >> 10)\n        \n        return\
-      \ len(in0)\n\n    def process_block(self, block_id, data_16):\n        if block_id\
-      \ == 0: # A: PI Code\n            if self.pi_code != data_16:\n            \
-      \    print(f\"[RDS] PI Code Detected: {hex(data_16)}\")\n            self.pi_code\
+  parameters: {_source_code: "import numpy as np\nfrom gnuradio import gr\nimport\
+      \ sys\n\nclass rds_decoder(gr.sync_block):\n    \"\"\"\n    Embedded Python\
+      \ Block for RDS Decoding.\n    Inputs:  demodulated symbols (byte/int) - 0 or\
+      \ 1\n    Outputs: message port for PS name\n    \"\"\"\n    def __init__(self):\n\
+      \        gr.sync_block.__init__(\n            self,\n            name='RDS Decoder',\n\
+      \            in_sig=[np.byte],\n            out_sig=None\n        )\n      \
+      \  self.message_port_register_out(gr.pmt.intern('ps_out'))\n        \n     \
+      \   # RDS Constants\n        self.OFFSET_A = 0b0011111100 # A=0\n        self.OFFSET_B\
+      \ = 0b0110011000 # B=1\n        self.OFFSET_C = 0b0101101000 # C=2\n       \
+      \ self.OFFSET_Cp= 0b1101010000 # C'=3\n        self.OFFSET_D = 0b0110110100\
+      \ # D=4\n        \n        # State\n        self.synced = False\n        self.bit_buffer\
+      \ = 0\n        self.last_block_id = -1\n        self.group_data = {} \n    \
+      \    self.ps_name = [' ']*8\n        self.pi_code = 0\n        \n        # Differential\
+      \ Decoding State\n        self.last_bit = 0\n        \n        # Debug\n   \
+      \     self.bit_counter = 0\n\n    def syndrome(self, m):\n        # Calculate\
+      \ syndrome for the last 26 bits\n        # g(x) = x^10 + x^8 + x^7 + x^5 + x^4\
+      \ + x^3 + 1\n        reg = 0\n        for i in range(25, -1, -1):\n        \
+      \    bit = (m >> i) & 0x01\n            reg_msb = (reg >> 9) & 0x01\n      \
+      \      reg = (reg << 1) & 0x3FF\n            if bit ^ reg_msb:\n           \
+      \     reg = reg ^ 0x1B9\n        return reg\n\n    def work(self, input_items,\
+      \ output_items):\n        in0 = input_items[0]\n        \n        if len(in0)\
+      \ > 0:\n            self.bit_counter += len(in0)\n            if self.bit_counter\
+      \ % 5000 < len(in0): # Approx every 5k bits\n                print(f\"[RDS]\
+      \ Status: Processed {self.bit_counter} bits. Synced: {self.synced}\")\n    \
+      \            sys.stdout.flush()\n\n        for raw_bit in in0:\n           \
+      \ val = raw_bit & 0x01\n            decoded_bit = val ^ self.last_bit\n    \
+      \        self.last_bit = val\n            \n            # Now process the decoded\
+      \ bit\n            self.bit_buffer = ((self.bit_buffer << 1) | decoded_bit)\
+      \ & 0x3FFFFFF \n            \n            syn = self.syndrome(self.bit_buffer)\n\
+      \            \n            # Debug: Print syndrome occasionally if not synced\n\
+      \            # if not self.synced and self.bit_counter % 1000 == 0:\n      \
+      \      #    print(f\"[RDS Debug] Current Syndrome: {bin(syn)}\")\n         \
+      \   \n            offset_found = -1\n            if syn == self.OFFSET_A: offset_found\
+      \ = 0\n            elif syn == self.OFFSET_B: offset_found = 1\n           \
+      \ elif syn == self.OFFSET_C: offset_found = 2\n            elif syn == self.OFFSET_Cp:\
+      \ offset_found = 3\n            elif syn == self.OFFSET_D: offset_found = 4\n\
+      \            \n            if offset_found != -1:\n                if not self.synced:\n\
+      \                    if offset_found == 0:\n                        print(\"\
+      [RDS] SYNC ACQUIRED (Block A)\")\n                        sys.stdout.flush()\n\
+      \                        self.synced = True\n                        self.last_block_id\
+      \ = 0\n                        self.process_block(0, self.bit_buffer >> 10)\n\
+      \                else:\n                    expected = (self.last_block_id +\
+      \ 1) % 4\n                    if expected == 2: # C or C'\n                \
+      \        valid = (offset_found == 2 or offset_found == 3)\n                \
+      \    else:\n                        valid = (offset_found == expected)\n   \
+      \                 \n                    if valid:\n                        self.last_block_id\
+      \ = offset_found if offset_found != 3 else 2\n                        self.process_block(offset_found,\
+      \ self.bit_buffer >> 10)\n                    else:\n                      \
+      \   if offset_found == 0: \n                            print(\"[RDS] Resyncing\
+      \ on Block A...\")\n                            sys.stdout.flush()\n       \
+      \                     self.last_block_id = 0\n                            self.process_block(0,\
+      \ self.bit_buffer >> 10)\n        \n        return len(in0)\n\n    def process_block(self,\
+      \ block_id, data_16):\n        if block_id == 0: # A: PI Code\n            if\
+      \ self.pi_code != data_16:\n                print(f\"[RDS] PI Code Detected:\
+      \ {hex(data_16)}\")\n                sys.stdout.flush()\n            self.pi_code\
       \ = data_16\n            self.group_data['PI'] = data_16\n            \n   \
       \     elif block_id == 1: # B: Group/PTY/TP\n            group_type = (data_16\
       \ >> 11) & 0x1F\n            self.group_data['type'] = group_type\n        \
@@ -463,8 +472,8 @@ blocks:
       \                    if 32 <= char2 <= 126: self.ps_name[idx+1] = chr(char2)\n\
       \                    \n                    ps_str = \"\".join(self.ps_name)\n\
       \                    print(f\"[RDS] Station Name: '{ps_str}'\")\n          \
-      \          self.message_port_pub(gr.pmt.intern('ps_out'), gr.pmt.intern(ps_str))\n",
-    id: rds_decoder, name: '"RDS Decoder"'}
+      \          sys.stdout.flush()\n                    self.message_port_pub(gr.pmt.intern('ps_out'),\
+      \ gr.pmt.intern(ps_str))\n", id: rds_decoder, name: '"RDS Decoder"'}
   states:
     coordinate: [1400, 680.0]
     state: enabled
