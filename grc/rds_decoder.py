@@ -24,23 +24,26 @@ class rds_decoder(gr.sync_block):
         self.OFFSET_Cp= 0b1101010000 # C'=3
         self.OFFSET_D = 0b0110110100 # D=4
 
-        # State
-        self.synced = False
+        # States
+        self.STATE_SEARCH = 0
+        self.STATE_PRESYNC = 1
+        self.STATE_SYNCED = 2
+
+        self.state = self.STATE_SEARCH
+        self.presync_bit_count = 0 # Bits since finding A in presync
+
         self.bit_buffer = 0
         self.last_block_id = -1
         self.group_data = {}
         self.ps_name = [' ']*8
         self.pi_code = 0
 
-        # Differential Decoding State
         self.last_bit = 0
-
-        # Debug
         self.bit_counter = 0
+        self.error_counter = 0 # Consecutive errors in SYNCED state
 
     def syndrome(self, m):
         # Calculate syndrome for the last 26 bits
-        # g(x) = x^10 + x^8 + x^7 + x^5 + x^4 + x^3 + 1
         reg = 0
         for i in range(25, -1, -1):
             bit = (m >> i) & 0x01
@@ -55,8 +58,9 @@ class rds_decoder(gr.sync_block):
 
         if len(in0) > 0:
             self.bit_counter += len(in0)
-            if self.bit_counter % 5000 < len(in0): # Approx every 5k bits
-                print(f"[RDS] Status: Processed {self.bit_counter} bits. Synced: {self.synced}")
+            if self.bit_counter % 10000 < len(in0):
+                state_str = ["SEARCH", "PRESYNC", "SYNCED"][self.state]
+                print(f"[RDS] Status: Processed {self.bit_counter} bits. State: {state_str}")
                 sys.stdout.flush()
 
         for raw_bit in in0:
@@ -64,42 +68,78 @@ class rds_decoder(gr.sync_block):
             decoded_bit = val ^ self.last_bit
             self.last_bit = val
 
-            # Now process the decoded bit
             self.bit_buffer = ((self.bit_buffer << 1) | decoded_bit) & 0x3FFFFFF
 
-            syn = self.syndrome(self.bit_buffer)
+            # --- State Machine ---
 
-            offset_found = -1
-            if syn == self.OFFSET_A: offset_found = 0
-            elif syn == self.OFFSET_B: offset_found = 1
-            elif syn == self.OFFSET_C: offset_found = 2
-            elif syn == self.OFFSET_Cp: offset_found = 3
-            elif syn == self.OFFSET_D: offset_found = 4
+            if self.state == self.STATE_SEARCH:
+                # Look for Offset A
+                syn = self.syndrome(self.bit_buffer)
+                if syn == self.OFFSET_A:
+                    # Found potential A, move to presync
+                    # print("[RDS] Found Potential Block A. Checking for B...")
+                    self.state = self.STATE_PRESYNC
+                    self.presync_bit_count = 0
+                    self.process_block(0, self.bit_buffer >> 10) # Process A to get PI
 
-            if offset_found != -1:
-                if not self.synced:
-                    if offset_found == 0:
-                        print("[RDS] SYNC ACQUIRED (Block A)")
+            elif self.state == self.STATE_PRESYNC:
+                self.presync_bit_count += 1
+                if self.presync_bit_count == 26:
+                    # We are now at the position where Block B should be
+                    syn = self.syndrome(self.bit_buffer)
+                    if syn == self.OFFSET_B:
+                        print("[RDS] SYNC ACQUIRED (Found A->B sequence)")
                         sys.stdout.flush()
-                        self.synced = True
-                        self.last_block_id = 0
-                        self.process_block(0, self.bit_buffer >> 10)
-                else:
+                        self.state = self.STATE_SYNCED
+                        self.last_block_id = 1
+                        self.process_block(1, self.bit_buffer >> 10)
+                        self.presync_bit_count = 0 # Reuse as generic counter if needed, or just rely on 26-bit jumps?
+                        # In stream mode, we must keep sliding or jump?
+                        # This implementation slides bit-by-bit.
+                        # Once synced, we should technically look only every 26 bits.
+                        # But bit-by-bit sliding with expected offset check is robust.
+                    else:
+                        # Failed to find B. False positive A.
+                        # print("[RDS] Presync Failed. Back to Search.")
+                        self.state = self.STATE_SEARCH
+
+            elif self.state == self.STATE_SYNCED:
+                self.presync_bit_count += 1
+                if self.presync_bit_count == 26:
+                    self.presync_bit_count = 0
+                    # Check for expected block
+                    syn = self.syndrome(self.bit_buffer)
+
                     expected = (self.last_block_id + 1) % 4
-                    if expected == 2: # C or C'
+
+                    offset_found = -1
+                    if syn == self.OFFSET_A: offset_found = 0
+                    elif syn == self.OFFSET_B: offset_found = 1
+                    elif syn == self.OFFSET_C: offset_found = 2
+                    elif syn == self.OFFSET_Cp: offset_found = 3
+                    elif syn == self.OFFSET_D: offset_found = 4
+
+                    valid = False
+                    if expected == 2: # Expecting C or C'
                         valid = (offset_found == 2 or offset_found == 3)
                     else:
                         valid = (offset_found == expected)
 
                     if valid:
+                        self.error_counter = 0
                         self.last_block_id = offset_found if offset_found != 3 else 2
                         self.process_block(offset_found, self.bit_buffer >> 10)
                     else:
-                         if offset_found == 0:
-                            print("[RDS] Resyncing on Block A...")
+                        self.error_counter += 1
+                        # print(f"[RDS] Sync Error {self.error_counter}/3. Expected {expected}, Got {offset_found}")
+
+                        # Special Case: If we missed a block but found the *next* one?
+                        # For now, strict logic.
+                        if self.error_counter >= 3:
+                            print("[RDS] Lost Sync (Too many errors). Resyncing...")
                             sys.stdout.flush()
-                            self.last_block_id = 0
-                            self.process_block(0, self.bit_buffer >> 10)
+                            self.state = self.STATE_SEARCH
+                            self.ps_name = [' ']*8 # Clear Name
 
         return len(in0)
 
@@ -138,13 +178,10 @@ class rds_decoder(gr.sync_block):
 
 if __name__ == "__main__":
     print("[RDS] Running Standalone Test Simulation...")
-    # Mock class to avoid GR dependency if run directly?
-    # Actually user environment has gnuradio.
     try:
         decoder = rds_decoder()
-        # Simulate 20000 bits of silence
         data = np.zeros(20000, dtype=np.byte)
         decoder.work([data], [])
-        print("[RDS] Test Complete. (No sync expected on silence, but block ran)")
+        print("[RDS] Test Complete.")
     except Exception as e:
         print(f"[RDS] Error running test: {e}")

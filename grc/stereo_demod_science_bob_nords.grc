@@ -402,71 +402,99 @@ blocks:
       \   # RDS Constants\n        self.OFFSET_A = 0b0011111100 # A=0\n        self.OFFSET_B\
       \ = 0b0110011000 # B=1\n        self.OFFSET_C = 0b0101101000 # C=2\n       \
       \ self.OFFSET_Cp= 0b1101010000 # C'=3\n        self.OFFSET_D = 0b0110110100\
-      \ # D=4\n        \n        # State\n        self.synced = False\n        self.bit_buffer\
-      \ = 0\n        self.last_block_id = -1\n        self.group_data = {} \n    \
-      \    self.ps_name = [' ']*8\n        self.pi_code = 0\n        \n        # Differential\
-      \ Decoding State\n        self.last_bit = 0\n        \n        # Debug\n   \
-      \     self.bit_counter = 0\n\n    def syndrome(self, m):\n        # Calculate\
-      \ syndrome for the last 26 bits\n        # g(x) = x^10 + x^8 + x^7 + x^5 + x^4\
-      \ + x^3 + 1\n        reg = 0\n        for i in range(25, -1, -1):\n        \
-      \    bit = (m >> i) & 0x01\n            reg_msb = (reg >> 9) & 0x01\n      \
-      \      reg = (reg << 1) & 0x3FF\n            if bit ^ reg_msb:\n           \
-      \     reg = reg ^ 0x1B9\n        return reg\n\n    def work(self, input_items,\
-      \ output_items):\n        in0 = input_items[0]\n        \n        if len(in0)\
-      \ > 0:\n            self.bit_counter += len(in0)\n            if self.bit_counter\
-      \ % 5000 < len(in0): # Approx every 5k bits\n                print(f\"[RDS]\
-      \ Status: Processed {self.bit_counter} bits. Synced: {self.synced}\")\n    \
-      \            sys.stdout.flush()\n\n        for raw_bit in in0:\n           \
-      \ val = raw_bit & 0x01\n            decoded_bit = val ^ self.last_bit\n    \
-      \        self.last_bit = val\n            \n            # Now process the decoded\
-      \ bit\n            self.bit_buffer = ((self.bit_buffer << 1) | decoded_bit)\
-      \ & 0x3FFFFFF \n            \n            syn = self.syndrome(self.bit_buffer)\n\
-      \            \n            offset_found = -1\n            if syn == self.OFFSET_A:\
-      \ offset_found = 0\n            elif syn == self.OFFSET_B: offset_found = 1\n\
-      \            elif syn == self.OFFSET_C: offset_found = 2\n            elif syn\
-      \ == self.OFFSET_Cp: offset_found = 3\n            elif syn == self.OFFSET_D:\
-      \ offset_found = 4\n            \n            if offset_found != -1:\n     \
-      \           if not self.synced:\n                    if offset_found == 0:\n\
-      \                        print(\"[RDS] SYNC ACQUIRED (Block A)\")\n        \
-      \                sys.stdout.flush()\n                        self.synced = True\n\
-      \                        self.last_block_id = 0\n                        self.process_block(0,\
-      \ self.bit_buffer >> 10)\n                else:\n                    expected\
-      \ = (self.last_block_id + 1) % 4\n                    if expected == 2: # C\
-      \ or C'\n                        valid = (offset_found == 2 or offset_found\
-      \ == 3)\n                    else:\n                        valid = (offset_found\
-      \ == expected)\n                    \n                    if valid:\n      \
-      \                  self.last_block_id = offset_found if offset_found != 3 else\
-      \ 2\n                        self.process_block(offset_found, self.bit_buffer\
-      \ >> 10)\n                    else:\n                         if offset_found\
-      \ == 0: \n                            print(\"[RDS] Resyncing on Block A...\"\
-      )\n                            sys.stdout.flush()\n                        \
-      \    self.last_block_id = 0\n                            self.process_block(0,\
-      \ self.bit_buffer >> 10)\n        \n        return len(in0)\n\n    def process_block(self,\
-      \ block_id, data_16):\n        if block_id == 0: # A: PI Code\n            if\
-      \ self.pi_code != data_16:\n                print(f\"[RDS] PI Code Detected:\
-      \ {hex(data_16)}\")\n                sys.stdout.flush()\n            self.pi_code\
-      \ = data_16\n            self.group_data['PI'] = data_16\n            \n   \
-      \     elif block_id == 1: # B: Group/PTY/TP\n            group_type = (data_16\
-      \ >> 11) & 0x1F\n            self.group_data['type'] = group_type\n        \
-      \    self.group_data['B'] = data_16\n            \n        elif block_id ==\
-      \ 4: # D: Text\n            if 'type' in self.group_data:\n                gtype\
-      \ = self.group_data['type']\n                b_block = self.group_data.get('B',\
-      \ 0)\n                \n                # Group 0A: PS Name\n              \
-      \  if gtype == 0: \n                    segment_addr = b_block & 0x03\n    \
-      \                char1 = (data_16 >> 8) & 0xFF\n                    char2 =\
-      \ data_16 & 0xFF\n                    \n                    idx = segment_addr\
-      \ * 2\n                    if 32 <= char1 <= 126: self.ps_name[idx] = chr(char1)\n\
-      \                    if 32 <= char2 <= 126: self.ps_name[idx+1] = chr(char2)\n\
-      \                    \n                    ps_str = \"\".join(self.ps_name)\n\
-      \                    print(f\"[RDS] Station Name: '{ps_str}'\")\n          \
-      \          sys.stdout.flush()\n                    self.message_port_pub(gr.pmt.intern('ps_out'),\
-      \ gr.pmt.intern(ps_str))\n\nif __name__ == \"__main__\":\n    print(\"[RDS]\
-      \ Running Standalone Test Simulation...\")\n    # Mock class to avoid GR dependency\
-      \ if run directly? \n    # Actually user environment has gnuradio.\n    try:\n\
-      \        decoder = rds_decoder()\n        # Simulate 20000 bits of silence\n\
-      \        data = np.zeros(20000, dtype=np.byte)\n        decoder.work([data],\
-      \ [])\n        print(\"[RDS] Test Complete. (No sync expected on silence, but\
-      \ block ran)\")\n    except Exception as e:\n        print(f\"[RDS] Error running\
+      \ # D=4\n        \n        # States\n        self.STATE_SEARCH = 0\n       \
+      \ self.STATE_PRESYNC = 1\n        self.STATE_SYNCED = 2\n        \n        self.state\
+      \ = self.STATE_SEARCH\n        self.presync_bit_count = 0 # Bits since finding\
+      \ A in presync\n        \n        self.bit_buffer = 0\n        self.last_block_id\
+      \ = -1\n        self.group_data = {} \n        self.ps_name = [' ']*8\n    \
+      \    self.pi_code = 0\n        \n        self.last_bit = 0\n        self.bit_counter\
+      \ = 0\n        self.error_counter = 0 # Consecutive errors in SYNCED state\n\
+      \n    def syndrome(self, m):\n        # Calculate syndrome for the last 26 bits\n\
+      \        reg = 0\n        for i in range(25, -1, -1):\n            bit = (m\
+      \ >> i) & 0x01\n            reg_msb = (reg >> 9) & 0x01\n            reg = (reg\
+      \ << 1) & 0x3FF\n            if bit ^ reg_msb:\n                reg = reg ^\
+      \ 0x1B9\n        return reg\n\n    def work(self, input_items, output_items):\n\
+      \        in0 = input_items[0]\n        \n        if len(in0) > 0:\n        \
+      \    self.bit_counter += len(in0)\n            if self.bit_counter % 10000 <\
+      \ len(in0): \n                state_str = [\"SEARCH\", \"PRESYNC\", \"SYNCED\"\
+      ][self.state]\n                print(f\"[RDS] Status: Processed {self.bit_counter}\
+      \ bits. State: {state_str}\")\n                sys.stdout.flush()\n\n      \
+      \  for raw_bit in in0:\n            val = raw_bit & 0x01\n            decoded_bit\
+      \ = val ^ self.last_bit\n            self.last_bit = val\n            \n   \
+      \         self.bit_buffer = ((self.bit_buffer << 1) | decoded_bit) & 0x3FFFFFF\
+      \ \n            \n            # --- State Machine ---\n            \n      \
+      \      if self.state == self.STATE_SEARCH:\n                # Look for Offset\
+      \ A\n                syn = self.syndrome(self.bit_buffer)\n                if\
+      \ syn == self.OFFSET_A:\n                    # Found potential A, move to presync\n\
+      \                    # print(\"[RDS] Found Potential Block A. Checking for B...\"\
+      )\n                    self.state = self.STATE_PRESYNC\n                   \
+      \ self.presync_bit_count = 0\n                    self.process_block(0, self.bit_buffer\
+      \ >> 10) # Process A to get PI\n                    \n            elif self.state\
+      \ == self.STATE_PRESYNC:\n                self.presync_bit_count += 1\n    \
+      \            if self.presync_bit_count == 26:\n                    # We are\
+      \ now at the position where Block B should be\n                    syn = self.syndrome(self.bit_buffer)\n\
+      \                    if syn == self.OFFSET_B:\n                        print(\"\
+      [RDS] SYNC ACQUIRED (Found A->B sequence)\")\n                        sys.stdout.flush()\n\
+      \                        self.state = self.STATE_SYNCED\n                  \
+      \      self.last_block_id = 1\n                        self.process_block(1,\
+      \ self.bit_buffer >> 10)\n                        self.presync_bit_count = 0\
+      \ # Reuse as generic counter if needed, or just rely on 26-bit jumps?\n    \
+      \                    # In stream mode, we must keep sliding or jump? \n    \
+      \                    # This implementation slides bit-by-bit. \n           \
+      \             # Once synced, we should technically look only every 26 bits.\n\
+      \                        # But bit-by-bit sliding with expected offset check\
+      \ is robust.\n                    else:\n                        # Failed to\
+      \ find B. False positive A.\n                        # print(\"[RDS] Presync\
+      \ Failed. Back to Search.\")\n                        self.state = self.STATE_SEARCH\n\
+      \            \n            elif self.state == self.STATE_SYNCED:\n         \
+      \       self.presync_bit_count += 1\n                if self.presync_bit_count\
+      \ == 26:\n                    self.presync_bit_count = 0\n                 \
+      \   # Check for expected block\n                    syn = self.syndrome(self.bit_buffer)\n\
+      \                    \n                    expected = (self.last_block_id +\
+      \ 1) % 4\n                    \n                    offset_found = -1\n    \
+      \                if syn == self.OFFSET_A: offset_found = 0\n               \
+      \     elif syn == self.OFFSET_B: offset_found = 1\n                    elif\
+      \ syn == self.OFFSET_C: offset_found = 2\n                    elif syn == self.OFFSET_Cp:\
+      \ offset_found = 3\n                    elif syn == self.OFFSET_D: offset_found\
+      \ = 4\n                    \n                    valid = False\n           \
+      \         if expected == 2: # Expecting C or C'\n                        valid\
+      \ = (offset_found == 2 or offset_found == 3)\n                    else:\n  \
+      \                      valid = (offset_found == expected)\n                \
+      \        \n                    if valid:\n                        self.error_counter\
+      \ = 0\n                        self.last_block_id = offset_found if offset_found\
+      \ != 3 else 2\n                        self.process_block(offset_found, self.bit_buffer\
+      \ >> 10)\n                    else:\n                        self.error_counter\
+      \ += 1\n                        # print(f\"[RDS] Sync Error {self.error_counter}/3.\
+      \ Expected {expected}, Got {offset_found}\")\n                        \n   \
+      \                     # Special Case: If we missed a block but found the *next*\
+      \ one?\n                        # For now, strict logic.\n                 \
+      \       if self.error_counter >= 3:\n                            print(\"[RDS]\
+      \ Lost Sync (Too many errors). Resyncing...\")\n                           \
+      \ sys.stdout.flush()\n                            self.state = self.STATE_SEARCH\n\
+      \                            self.ps_name = [' ']*8 # Clear Name\n        \n\
+      \        return len(in0)\n\n    def process_block(self, block_id, data_16):\n\
+      \        if block_id == 0: # A: PI Code\n            if self.pi_code != data_16:\n\
+      \                print(f\"[RDS] PI Code Detected: {hex(data_16)}\")\n      \
+      \          sys.stdout.flush()\n            self.pi_code = data_16\n        \
+      \    self.group_data['PI'] = data_16\n            \n        elif block_id ==\
+      \ 1: # B: Group/PTY/TP\n            group_type = (data_16 >> 11) & 0x1F\n  \
+      \          self.group_data['type'] = group_type\n            self.group_data['B']\
+      \ = data_16\n            \n        elif block_id == 4: # D: Text\n         \
+      \   if 'type' in self.group_data:\n                gtype = self.group_data['type']\n\
+      \                b_block = self.group_data.get('B', 0)\n                \n \
+      \               # Group 0A: PS Name\n                if gtype == 0: \n     \
+      \               segment_addr = b_block & 0x03\n                    char1 = (data_16\
+      \ >> 8) & 0xFF\n                    char2 = data_16 & 0xFF\n               \
+      \     \n                    idx = segment_addr * 2\n                    if 32\
+      \ <= char1 <= 126: self.ps_name[idx] = chr(char1)\n                    if 32\
+      \ <= char2 <= 126: self.ps_name[idx+1] = chr(char2)\n                    \n\
+      \                    ps_str = \"\".join(self.ps_name)\n                    print(f\"\
+      [RDS] Station Name: '{ps_str}'\")\n                    sys.stdout.flush()\n\
+      \                    self.message_port_pub(gr.pmt.intern('ps_out'), gr.pmt.intern(ps_str))\n\
+      \nif __name__ == \"__main__\":\n    print(\"[RDS] Running Standalone Test Simulation...\"\
+      )\n    try:\n        decoder = rds_decoder()\n        data = np.zeros(20000,\
+      \ dtype=np.byte)\n        decoder.work([data], [])\n        print(\"[RDS] Test\
+      \ Complete.\")\n    except Exception as e:\n        print(f\"[RDS] Error running\
       \ test: {e}\")\n", id: rds_decoder, name: '"RDS Decoder"'}
   states:
     coordinate: [1400, 680.0]
