@@ -50,13 +50,6 @@ class rds_decoder(gr.sync_block):
         in0 = input_items[0]
 
         for raw_bit in in0:
-            # Differential Decoding:
-            # d[i] = raw[i] XOR raw[i-1]
-            # Wait, standard RDS differential encoding is:
-            # transmitted[i] = data[i] XOR transmitted[i-1]
-            # So data[i] = transmitted[i] XOR transmitted[i-1]
-            # raw_bit is the demodulated symbol (effectively transmitted bit)
-
             val = raw_bit & 0x01
             decoded_bit = val ^ self.last_bit
             self.last_bit = val
@@ -76,6 +69,7 @@ class rds_decoder(gr.sync_block):
             if offset_found != -1:
                 if not self.synced:
                     if offset_found == 0:
+                        print("[RDS] SYNC ACQUIRED (Block A)")
                         self.synced = True
                         self.last_block_id = 0
                         self.process_block(0, self.bit_buffer >> 10)
@@ -91,6 +85,7 @@ class rds_decoder(gr.sync_block):
                         self.process_block(offset_found, self.bit_buffer >> 10)
                     else:
                          if offset_found == 0:
+                            print("[RDS] Resyncing on Block A...")
                             self.last_block_id = 0
                             self.process_block(0, self.bit_buffer >> 10)
 
@@ -98,6 +93,8 @@ class rds_decoder(gr.sync_block):
 
     def process_block(self, block_id, data_16):
         if block_id == 0: # A: PI Code
+            if self.pi_code != data_16:
+                print(f"[RDS] PI Code Detected: {hex(data_16)}")
             self.pi_code = data_16
             self.group_data['PI'] = data_16
 
@@ -122,4 +119,5 @@ class rds_decoder(gr.sync_block):
                     if 32 <= char2 <= 126: self.ps_name[idx+1] = chr(char2)
 
                     ps_str = "".join(self.ps_name)
+                    print(f"[RDS] Station Name: '{ps_str}'")
                     self.message_port_pub(gr.pmt.intern('ps_out'), gr.pmt.intern(ps_str))
