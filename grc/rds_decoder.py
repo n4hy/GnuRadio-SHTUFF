@@ -26,24 +26,26 @@ class rds_decoder(gr.sync_block):
 
         # States
         self.STATE_SEARCH = 0
-        self.STATE_PRESYNC = 1
-        self.STATE_SYNCED = 2
+        self.STATE_PRESYNC_B = 1 # Found A, looking for B
+        self.STATE_PRESYNC_C = 2 # Found B, looking for C (Stricter Sync)
+        self.STATE_SYNCED = 3
 
         self.state = self.STATE_SEARCH
-        self.presync_bit_count = 0 # Bits since finding A in presync
+        self.presync_bit_count = 0
 
         self.bit_buffer = 0
         self.last_block_id = -1
         self.group_data = {}
         self.ps_name = [' ']*8
         self.pi_code = 0
+        self.pi_code_counts = {} # For stability check
 
         self.last_bit = 0
         self.bit_counter = 0
         self.error_counter = 0 # Consecutive errors in SYNCED state
+        self.MAX_ERRORS = 5
 
     def syndrome(self, m):
-        # Calculate syndrome for the last 26 bits
         reg = 0
         for i in range(25, -1, -1):
             bit = (m >> i) & 0x01
@@ -58,8 +60,8 @@ class rds_decoder(gr.sync_block):
 
         if len(in0) > 0:
             self.bit_counter += len(in0)
-            if self.bit_counter % 10000 < len(in0):
-                state_str = ["SEARCH", "PRESYNC", "SYNCED"][self.state]
+            if self.bit_counter % 20000 < len(in0):
+                state_str = ["SEARCH", "WAIT_B", "WAIT_C", "SYNCED"][self.state]
                 print(f"[RDS] Status: Processed {self.bit_counter} bits. State: {state_str}")
                 sys.stdout.flush()
 
@@ -73,41 +75,46 @@ class rds_decoder(gr.sync_block):
             # --- State Machine ---
 
             if self.state == self.STATE_SEARCH:
-                # Look for Offset A
                 syn = self.syndrome(self.bit_buffer)
                 if syn == self.OFFSET_A:
-                    # Found potential A, move to presync
-                    # print("[RDS] Found Potential Block A. Checking for B...")
-                    self.state = self.STATE_PRESYNC
+                    self.state = self.STATE_PRESYNC_B
                     self.presync_bit_count = 0
-                    self.process_block(0, self.bit_buffer >> 10) # Process A to get PI
+                    self.process_block(0, self.bit_buffer >> 10)
 
-            elif self.state == self.STATE_PRESYNC:
+            elif self.state == self.STATE_PRESYNC_B:
                 self.presync_bit_count += 1
                 if self.presync_bit_count == 26:
-                    # We are now at the position where Block B should be
                     syn = self.syndrome(self.bit_buffer)
                     if syn == self.OFFSET_B:
-                        print("[RDS] SYNC ACQUIRED (Found A->B sequence)")
-                        sys.stdout.flush()
-                        self.state = self.STATE_SYNCED
+                        # Found A->B, now look for C to be super sure (noise mitigation)
+                        self.state = self.STATE_PRESYNC_C
                         self.last_block_id = 1
                         self.process_block(1, self.bit_buffer >> 10)
-                        self.presync_bit_count = 0 # Reuse as generic counter if needed, or just rely on 26-bit jumps?
-                        # In stream mode, we must keep sliding or jump?
-                        # This implementation slides bit-by-bit.
-                        # Once synced, we should technically look only every 26 bits.
-                        # But bit-by-bit sliding with expected offset check is robust.
+                        self.presync_bit_count = 0
                     else:
-                        # Failed to find B. False positive A.
-                        # print("[RDS] Presync Failed. Back to Search.")
+                        self.state = self.STATE_SEARCH
+
+            elif self.state == self.STATE_PRESYNC_C:
+                self.presync_bit_count += 1
+                if self.presync_bit_count == 26:
+                    syn = self.syndrome(self.bit_buffer)
+                    if syn == self.OFFSET_C or syn == self.OFFSET_Cp:
+                        print("[RDS] SYNC ACQUIRED (Found A->B->C sequence)")
+                        sys.stdout.flush()
+                        self.state = self.STATE_SYNCED
+                        self.last_block_id = 2
+                        self.error_counter = 0
+                        self.process_block(2, self.bit_buffer >> 10)
+                        self.presync_bit_count = 0
+                    else:
+                        print("[RDS] Failed strict sync (Missed Block C). Retrying...")
+                        sys.stdout.flush()
                         self.state = self.STATE_SEARCH
 
             elif self.state == self.STATE_SYNCED:
                 self.presync_bit_count += 1
                 if self.presync_bit_count == 26:
                     self.presync_bit_count = 0
-                    # Check for expected block
                     syn = self.syndrome(self.bit_buffer)
 
                     expected = (self.last_block_id + 1) % 4
@@ -120,40 +127,55 @@ class rds_decoder(gr.sync_block):
                     elif syn == self.OFFSET_D: offset_found = 4
 
                     valid = False
-                    if expected == 2: # Expecting C or C'
+                    if expected == 2: # C or C'
                         valid = (offset_found == 2 or offset_found == 3)
                     else:
                         valid = (offset_found == expected)
 
                     if valid:
-                        self.error_counter = 0
+                        self.error_counter = 0 # Reset error count on good block
                         self.last_block_id = offset_found if offset_found != 3 else 2
                         self.process_block(offset_found, self.bit_buffer >> 10)
                     else:
                         self.error_counter += 1
-                        # print(f"[RDS] Sync Error {self.error_counter}/3. Expected {expected}, Got {offset_found}")
+                        # We might have missed a block, but we are synced, so assume the stream flows
+                        self.last_block_id = expected # Increment anyway to stay in phase
 
-                        # Special Case: If we missed a block but found the *next* one?
-                        # For now, strict logic.
-                        if self.error_counter >= 3:
-                            print("[RDS] Lost Sync (Too many errors). Resyncing...")
+                        if self.error_counter >= self.MAX_ERRORS:
+                            print(f"[RDS] Lost Sync ({self.error_counter} consecutive errors). Resyncing...")
                             sys.stdout.flush()
                             self.state = self.STATE_SEARCH
-                            self.ps_name = [' ']*8 # Clear Name
+                            self.ps_name = [' ']*8
 
         return len(in0)
 
     def process_block(self, block_id, data_16):
         if block_id == 0: # A: PI Code
-            if self.pi_code != data_16:
-                print(f"[RDS] PI Code Detected: {hex(data_16)}")
-                sys.stdout.flush()
-            self.pi_code = data_16
+            # Debounce PI Code
+            if data_16 not in self.pi_code_counts: self.pi_code_counts[data_16] = 0
+            self.pi_code_counts[data_16] += 1
+
+            # Only switch PI if we see it often (e.g. > 2 times)
+            if self.pi_code_counts[data_16] > 2:
+                if self.pi_code != data_16:
+                    print(f"[RDS] PI Code Confirmed: {hex(data_16)}")
+                    sys.stdout.flush()
+                    # Reset others
+                    self.pi_code_counts = {data_16: 10}
+                self.pi_code = data_16
+
             self.group_data['PI'] = data_16
 
         elif block_id == 1: # B: Group/PTY/TP
-            group_type = (data_16 >> 11) & 0x1F
-            self.group_data['type'] = group_type
+            group_type_int = (data_16 >> 11) & 0x1F
+            version = (data_16 >> 11) & 0x01 # Bit 11 is B0
+            group_num = (group_type_int >> 1)
+            group_ver = 'B' if (group_type_int & 1) else 'A'
+
+            # Print Group Type for debug
+            # print(f"[RDS] Group Type: {group_num}{group_ver}")
+
+            self.group_data['type'] = group_type_int
             self.group_data['B'] = data_16
 
         elif block_id == 4: # D: Text
@@ -172,9 +194,17 @@ class rds_decoder(gr.sync_block):
                     if 32 <= char2 <= 126: self.ps_name[idx+1] = chr(char2)
 
                     ps_str = "".join(self.ps_name)
-                    print(f"[RDS] Station Name: '{ps_str}'")
-                    sys.stdout.flush()
-                    self.message_port_pub(gr.pmt.intern('ps_out'), gr.pmt.intern(ps_str))
+                    # print(f"[RDS] Partial Station Name: '{ps_str}'")
+                    # Only emit if it looks somewhat complete? No, emit always so user sees progress.
+                    if idx == 6: # Last segment updated
+                         print(f"[RDS] Station Name Update: '{ps_str}'")
+                         sys.stdout.flush()
+                         self.message_port_pub(gr.pmt.intern('ps_out'), gr.pmt.intern(ps_str))
+
+                # Group 2A: Radio Text (RT) - Just for info
+                elif gtype == 4: # 2A = 4
+                     # Decode RT if wanted
+                     pass
 
 if __name__ == "__main__":
     print("[RDS] Running Standalone Test Simulation...")
