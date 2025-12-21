@@ -69,10 +69,6 @@ class rds_decoder(gr.sync_block):
 
             syn = self.syndrome(self.bit_buffer)
 
-            # Debug: Print syndrome occasionally if not synced
-            # if not self.synced and self.bit_counter % 1000 == 0:
-            #    print(f"[RDS Debug] Current Syndrome: {bin(syn)}")
-
             offset_found = -1
             if syn == self.OFFSET_A: offset_found = 0
             elif syn == self.OFFSET_B: offset_found = 1
@@ -139,3 +135,16 @@ class rds_decoder(gr.sync_block):
                     print(f"[RDS] Station Name: '{ps_str}'")
                     sys.stdout.flush()
                     self.message_port_pub(gr.pmt.intern('ps_out'), gr.pmt.intern(ps_str))
+
+if __name__ == "__main__":
+    print("[RDS] Running Standalone Test Simulation...")
+    # Mock class to avoid GR dependency if run directly?
+    # Actually user environment has gnuradio.
+    try:
+        decoder = rds_decoder()
+        # Simulate 20000 bits of silence
+        data = np.zeros(20000, dtype=np.byte)
+        decoder.work([data], [])
+        print("[RDS] Test Complete. (No sync expected on silence, but block ran)")
+    except Exception as e:
+        print(f"[RDS] Error running test: {e}")

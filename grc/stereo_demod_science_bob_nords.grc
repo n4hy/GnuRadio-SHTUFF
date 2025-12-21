@@ -234,17 +234,6 @@ blocks:
     coordinate: [352, 48.0]
     rotation: 0
     state: enabled
-- id: qtgui_label
-  name: qtgui_label_0
-  parameters: {affinity: '', alias: '', comment: '', formatter: None, gui_hint: '',
-    label: Station Name, type: string, value: '""'}
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [904, 608.0]
-    rotation: 0
-    state: enabled
 - id: rational_resampler_xxx
   name: rational_resampler_xxx_0
   parameters: {affinity: '', alias: '', comment: '', decim: '25', fbw: '0.4', interp: '24',
@@ -432,28 +421,26 @@ blocks:
       \        self.last_bit = val\n            \n            # Now process the decoded\
       \ bit\n            self.bit_buffer = ((self.bit_buffer << 1) | decoded_bit)\
       \ & 0x3FFFFFF \n            \n            syn = self.syndrome(self.bit_buffer)\n\
-      \            \n            # Debug: Print syndrome occasionally if not synced\n\
-      \            # if not self.synced and self.bit_counter % 1000 == 0:\n      \
-      \      #    print(f\"[RDS Debug] Current Syndrome: {bin(syn)}\")\n         \
-      \   \n            offset_found = -1\n            if syn == self.OFFSET_A: offset_found\
-      \ = 0\n            elif syn == self.OFFSET_B: offset_found = 1\n           \
-      \ elif syn == self.OFFSET_C: offset_found = 2\n            elif syn == self.OFFSET_Cp:\
-      \ offset_found = 3\n            elif syn == self.OFFSET_D: offset_found = 4\n\
-      \            \n            if offset_found != -1:\n                if not self.synced:\n\
-      \                    if offset_found == 0:\n                        print(\"\
-      [RDS] SYNC ACQUIRED (Block A)\")\n                        sys.stdout.flush()\n\
-      \                        self.synced = True\n                        self.last_block_id\
-      \ = 0\n                        self.process_block(0, self.bit_buffer >> 10)\n\
-      \                else:\n                    expected = (self.last_block_id +\
-      \ 1) % 4\n                    if expected == 2: # C or C'\n                \
-      \        valid = (offset_found == 2 or offset_found == 3)\n                \
-      \    else:\n                        valid = (offset_found == expected)\n   \
-      \                 \n                    if valid:\n                        self.last_block_id\
-      \ = offset_found if offset_found != 3 else 2\n                        self.process_block(offset_found,\
-      \ self.bit_buffer >> 10)\n                    else:\n                      \
-      \   if offset_found == 0: \n                            print(\"[RDS] Resyncing\
-      \ on Block A...\")\n                            sys.stdout.flush()\n       \
-      \                     self.last_block_id = 0\n                            self.process_block(0,\
+      \            \n            offset_found = -1\n            if syn == self.OFFSET_A:\
+      \ offset_found = 0\n            elif syn == self.OFFSET_B: offset_found = 1\n\
+      \            elif syn == self.OFFSET_C: offset_found = 2\n            elif syn\
+      \ == self.OFFSET_Cp: offset_found = 3\n            elif syn == self.OFFSET_D:\
+      \ offset_found = 4\n            \n            if offset_found != -1:\n     \
+      \           if not self.synced:\n                    if offset_found == 0:\n\
+      \                        print(\"[RDS] SYNC ACQUIRED (Block A)\")\n        \
+      \                sys.stdout.flush()\n                        self.synced = True\n\
+      \                        self.last_block_id = 0\n                        self.process_block(0,\
+      \ self.bit_buffer >> 10)\n                else:\n                    expected\
+      \ = (self.last_block_id + 1) % 4\n                    if expected == 2: # C\
+      \ or C'\n                        valid = (offset_found == 2 or offset_found\
+      \ == 3)\n                    else:\n                        valid = (offset_found\
+      \ == expected)\n                    \n                    if valid:\n      \
+      \                  self.last_block_id = offset_found if offset_found != 3 else\
+      \ 2\n                        self.process_block(offset_found, self.bit_buffer\
+      \ >> 10)\n                    else:\n                         if offset_found\
+      \ == 0: \n                            print(\"[RDS] Resyncing on Block A...\"\
+      )\n                            sys.stdout.flush()\n                        \
+      \    self.last_block_id = 0\n                            self.process_block(0,\
       \ self.bit_buffer >> 10)\n        \n        return len(in0)\n\n    def process_block(self,\
       \ block_id, data_16):\n        if block_id == 0: # A: PI Code\n            if\
       \ self.pi_code != data_16:\n                print(f\"[RDS] PI Code Detected:\
@@ -473,9 +460,22 @@ blocks:
       \                    \n                    ps_str = \"\".join(self.ps_name)\n\
       \                    print(f\"[RDS] Station Name: '{ps_str}'\")\n          \
       \          sys.stdout.flush()\n                    self.message_port_pub(gr.pmt.intern('ps_out'),\
-      \ gr.pmt.intern(ps_str))\n", id: rds_decoder, name: '"RDS Decoder"'}
+      \ gr.pmt.intern(ps_str))\n\nif __name__ == \"__main__\":\n    print(\"[RDS]\
+      \ Running Standalone Test Simulation...\")\n    # Mock class to avoid GR dependency\
+      \ if run directly? \n    # Actually user environment has gnuradio.\n    try:\n\
+      \        decoder = rds_decoder()\n        # Simulate 20000 bits of silence\n\
+      \        data = np.zeros(20000, dtype=np.byte)\n        decoder.work([data],\
+      \ [])\n        print(\"[RDS] Test Complete. (No sync expected on silence, but\
+      \ block ran)\")\n    except Exception as e:\n        print(f\"[RDS] Error running\
+      \ test: {e}\")\n", id: rds_decoder, name: '"RDS Decoder"'}
   states:
     coordinate: [1400, 680.0]
+    state: enabled
+- id: blocks_message_debug
+  name: blocks_message_debug_0
+  parameters: {}
+  states:
+    coordinate: [900, 600.0]
     state: enabled
 connections:
 - [analog_wfm_rcv_0, '0', band_pass_filter_0, '0']
@@ -505,7 +505,7 @@ connections:
 - [digital_costas_loop_cc_rds, '0', digital_symbol_sync_xx_rds, '0']
 - [digital_symbol_sync_xx_rds, '0', digital_constellation_decoder_cb_rds, '0']
 - [digital_constellation_decoder_cb_rds, '0', rds_decoder_block, '0']
-- [rds_decoder_block, ps_out, qtgui_label_0, '0']
+- [rds_decoder_block, ps_out, blocks_message_debug_0, print]
 metadata: {file_format: 1, grc_version: 3.10.9.2}
 options:
   parameters: {author: '', catch_exceptions: 'True', category: '[GRC Hier Blocks]',
